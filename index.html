@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Derivation Graph — Formula Inline Edit</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"></script>
+  <script src="https://unpkg.com/mousetrap@1.6.5/mousetrap.min.js"></script>
+  <style>
+    body {margin:0;background:#f8f6f1;color:#1e293b;font-family:system-ui,sans-serif;}
+    #cy {height:100vh;width:100%;background:#faf9f6;}
+    .node-box {background:#fffdf7;border:1px solid #d8d3c3;border-radius:.75rem;padding:.4rem .6rem;box-shadow:0 2px 6px rgba(0,0,0,.08);}
+    .node-formula {font-size:16px;color:#111827;}
+    .node-edit {display:none;}
+    textarea.inline-edit {width:100%;height:4em;border:1px solid #ccc;border-radius:.5rem;padding:.3rem;}
+  </style>
+</head>
+<body>
+  <div id="cy"></div>
+  <script>
+  document.addEventListener('DOMContentLoaded',()=>{
+    const store={nodes:[{id:'def_L',latex:'L= T - V'},{id:'eq_EL',latex:'\\frac{d}{dt}\\frac{\\partial L}{\\partial \\dot q}-\\frac{\\partial L}{\\partial q}=0'}],edges:[{id:'e1',source:'def_L',target:'eq_EL'}]};
+
+    if(typeof cytoscapeDagre==='function')cytoscape.use(cytoscapeDagre);
+    const cy=cytoscape({
+      container:document.getElementById('cy'),
+      layout:{name:'dagre',rankDir:'TB'},
+      style:[
+        {selector:'node',style:{'shape':'round-rectangle','background-opacity':0,'label':'data(latex)','text-opacity':0}},
+        {selector:'edge',style:{'width':2,'line-color':'#cbbf9d','target-arrow-color':'#cbbf9d','target-arrow-shape':'triangle'}}
+      ],
+      elements:{nodes:store.nodes.map(n=>({data:n})),edges:store.edges.map(e=>({data:e}))}
+    });
+
+    // create HTML overlays for each node
+    const container=document.getElementById('cy');
+    function createBox(node){
+      const div=document.createElement('div');
+      div.className='node-box';
+      const formula=document.createElement('div');
+      formula.className='node-formula';
+      formula.dataset.id=node.id();
+      try{formula.innerHTML=katex.renderToString(node.data('latex'),{throwOnError:false});}catch{formula.textContent='error';}
+      div.appendChild(formula);
+      const edit=document.createElement('div');
+      edit.className='node-edit';
+      const ta=document.createElement('textarea');
+      ta.className='inline-edit';
+      ta.value=node.data('latex');
+      edit.appendChild(ta);
+      div.appendChild(edit);
+      container.appendChild(div);
+      positionBox(node,div);
+
+      formula.addEventListener('click',()=>{
+        formula.style.display='none';
+        edit.style.display='block';
+        ta.focus();
+      });
+      ta.addEventListener('keydown',e=>{
+        if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();
+          const val=ta.value;
+          node.data('latex',val);
+          try{formula.innerHTML=katex.renderToString(val,{throwOnError:false});}catch{formula.textContent='error';}
+          formula.style.display='block';
+          edit.style.display='none';
+        }
+        if(e.key==='Escape'){formula.style.display='block';edit.style.display='none';}
+      });
+      return div;
+    }
+
+    function positionBox(node,div){
+      const pos=node.renderedPosition();
+      const rect=container.getBoundingClientRect();
+      div.style.position='absolute';
+      div.style.left=(rect.left+pos.x-80)+'px';
+      div.style.top=(rect.top+pos.y-20)+'px';
+    }
+
+    const nodeBoxes=new Map();
+    cy.nodes().forEach(n=>nodeBoxes.set(n.id(),createBox(n)));
+    cy.on('position','node',evt=>{
+      const node=evt.target;
+      const box=nodeBoxes.get(node.id());
+      if(box)positionBox(node,box);
+    });
+
+    window.addEventListener('resize',()=>{
+      cy.nodes().forEach(n=>positionBox(n,nodeBoxes.get(n.id())));
+    });
+  });
+  </script>
+</body>
+</html>
