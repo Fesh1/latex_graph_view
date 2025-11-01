@@ -31,14 +31,14 @@
     }
 
     .command-panel {
-      width: 280px;
+      width: 300px;
       background: #f0ece1;
       border-right: 1px solid #d6cfbf;
       padding: 1.5rem 1.25rem;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      gap: 1.25rem;
       box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.05);
     }
 
@@ -64,6 +64,17 @@
       gap: 0.6rem;
     }
 
+    .panel-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .panel-section + .panel-section {
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(63, 48, 16, 0.1);
+    }
+
     .command-panel li {
       font-size: 0.85rem;
       color: #1f2937;
@@ -85,6 +96,27 @@
       font-size: 0.8rem;
       color: #3f3010;
       border: 1px solid rgba(63, 48, 16, 0.12);
+    }
+
+    .add-node-btn {
+      border: 1px solid #b08a33;
+      background: linear-gradient(180deg, #fbe7a3 0%, #f0d57a 100%);
+      color: #3f3010;
+      border-radius: 0.6rem;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      transition: filter 120ms ease, transform 120ms ease;
+    }
+
+    .add-node-btn:hover {
+      filter: brightness(0.97);
+    }
+
+    .add-node-btn:active {
+      transform: translateY(1px);
     }
 
     #cy {
@@ -188,14 +220,22 @@
 <body>
   <div class="app-shell">
     <aside class="command-panel" aria-label="Editing commands">
-      <h1>Editing commands</h1>
-      <p>Open a formula by clicking its node. Use these shortcuts to work quickly:</p>
-      <ul>
-        <li><span>Commit edits</span><code>Ctrl/Cmd + Enter</code></li>
-        <li><span>Cancel edits</span><code>Esc</code></li>
-        <li><span>Save on blur</span><code>Click outside editor</code></li>
-        <li><span>Switch nodes</span><code>Click another node</code></li>
-      </ul>
+      <div class="panel-section">
+        <h1>Editing commands</h1>
+        <p>Open a formula by clicking its node. Use these shortcuts to work quickly:</p>
+        <ul>
+          <li><span>Commit edits</span><code>Ctrl/Cmd + Enter</code></li>
+          <li><span>Cancel edits</span><code>Esc</code></li>
+          <li><span>Save on blur</span><code>Click outside editor</code></li>
+          <li><span>Switch nodes</span><code>Click another node</code></li>
+        </ul>
+      </div>
+      <div class="panel-section">
+        <h1>Add new node</h1>
+        <p>Create a fresh formula node and start editing it instantly.</p>
+        <button type="button" class="add-node-btn">Add formula node</button>
+        <p>New nodes appear in the layout automatically; connect them later from your data source.</p>
+      </div>
     </aside>
     <div id="cy" role="application" aria-label="Derivation graph"></div>
   </div>
@@ -215,9 +255,11 @@
       cytoscape.use(cytoscapeDagre);
     }
 
+    const baseLayoutOptions = { name: 'dagre', rankDir: 'TB', nodeSep: 120, rankSep: 140 };
+
     const cy = cytoscape({
       container: document.getElementById('cy'),
-      layout: { name: 'dagre', rankDir: 'TB', nodeSep: 120, rankSep: 140 },
+      layout: baseLayoutOptions,
       style: [
         {
           selector: 'node',
@@ -247,6 +289,16 @@
     const container = cy.container();
     const nodeBoxes = new Map();
     let activeEditor = null;
+    const addNodeButton = document.querySelector('.add-node-btn');
+    let nodeSequence = store.nodes.length;
+
+    function runLayout(callback) {
+      const layout = cy.layout({ ...baseLayoutOptions });
+      if (typeof callback === 'function') {
+        layout.on('layoutstop', callback);
+      }
+      layout.run();
+    }
 
     function renderLatex(target, latex) {
       try {
@@ -403,6 +455,22 @@
       nodeBoxes.set(node.id(), createBox(node));
     });
 
+    function addFormulaNode() {
+      nodeSequence += 1;
+      const id = `node_${nodeSequence}`;
+      const defaultLatex = '\\text{New formula}';
+      const nodeData = { id, latex: defaultLatex };
+      store.nodes.push(nodeData);
+      const cyNode = cy.add({ group: 'nodes', data: nodeData });
+      const state = createBox(cyNode);
+      nodeBoxes.set(id, state);
+      updatePositions();
+      state.enterEdit();
+      runLayout(() => {
+        updatePositions();
+      });
+    }
+
     cy.on('position', 'node', (evt) => {
       const state = nodeBoxes.get(evt.target.id());
       if (state) {
@@ -413,6 +481,12 @@
     cy.on('pan zoom', updatePositions);
     cy.on('render', updatePositions);
     window.addEventListener('resize', updatePositions);
+
+    if (addNodeButton) {
+      addNodeButton.addEventListener('click', () => {
+        addFormulaNode();
+      });
+    }
 
     document.addEventListener('click', (event) => {
       if (activeEditor && !activeEditor.wrapper.contains(event.target)) {
