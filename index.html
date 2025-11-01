@@ -168,6 +168,7 @@
 
     const container = cy.container();
     const nodeBoxes = new Map();
+    let activeEditor = null;
 
     function renderLatex(target, latex) {
       try {
@@ -199,14 +200,15 @@
 
       const preview = document.createElement('div');
       preview.className = 'node-formula';
-      renderLatex(preview, node.data('latex'));
+      const initialLatex = node.data('latex');
+      renderLatex(preview, initialLatex);
 
       const editor = document.createElement('div');
       editor.className = 'node-editor';
 
       const textarea = document.createElement('textarea');
       textarea.className = 'inline-edit';
-      textarea.value = node.data('latex');
+      textarea.value = initialLatex;
 
       const hint = document.createElement('div');
       hint.className = 'edit-hint';
@@ -243,15 +245,21 @@
         editor,
         textarea,
         mode: 'view',
+        savedLatex: initialLatex,
+        draftLatex: initialLatex,
         enterEdit,
         exitEdit
       };
 
       function enterEdit() {
         if (state.mode === 'edit') return;
+        if (activeEditor && activeEditor !== state) {
+          activeEditor.exitEdit(true);
+        }
         state.mode = 'edit';
+        activeEditor = state;
         wrapper.classList.add('editing');
-        textarea.value = node.data('latex');
+        textarea.value = state.draftLatex;
         setTimeout(() => {
           textarea.focus();
           textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -259,15 +267,25 @@
       }
 
       function exitEdit(saveChanges) {
+        if (state.mode !== 'edit') return;
         if (saveChanges) {
-          const next = textarea.value;
-          node.data('latex', next);
-          renderLatex(preview, next);
+          const next = state.draftLatex;
+          if (next !== state.savedLatex) {
+            state.savedLatex = next;
+            node.data('latex', next);
+            renderLatex(preview, next);
+          }
+          state.draftLatex = state.savedLatex;
+          textarea.value = state.savedLatex;
         } else {
-          textarea.value = node.data('latex');
+          state.draftLatex = state.savedLatex;
+          textarea.value = state.savedLatex;
         }
         state.mode = 'view';
         wrapper.classList.remove('editing');
+        if (activeEditor === state) {
+          activeEditor = null;
+        }
       }
 
       wrapper.addEventListener('click', (event) => {
@@ -296,6 +314,10 @@
         }
       });
 
+      textarea.addEventListener('input', () => {
+        state.draftLatex = textarea.value;
+      });
+
       return state;
     }
 
@@ -313,6 +335,12 @@
     cy.on('pan zoom', updatePositions);
     cy.on('render', updatePositions);
     window.addEventListener('resize', updatePositions);
+
+    document.addEventListener('click', (event) => {
+      if (activeEditor && !activeEditor.wrapper.contains(event.target)) {
+        activeEditor.exitEdit(true);
+      }
+    });
   });
   </script>
 </body>
