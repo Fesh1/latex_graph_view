@@ -38,13 +38,19 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
       min-width: 180px;
       transform: translate(-50%, -50%);
-      transition: box-shadow 120ms ease, border-color 120ms ease;
+      transition: box-shadow 120ms ease, border-color 120ms ease, outline 120ms ease;
       cursor: pointer;
     }
 
     .node-box.editing {
       border-color: #9b8f72;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .node-box.focused {
+      border-color: #bfa96c;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+      outline: 3px solid rgba(191, 169, 108, 0.35);
     }
 
     .node-formula {
@@ -130,7 +136,8 @@
       ],
       edges: [
         { id: 'e1', source: 'def_L', target: 'eq_EL' }
-      ]
+      ],
+      activeNodeId: null
     };
 
     if (typeof cytoscapeDagre === 'function') {
@@ -210,7 +217,7 @@
 
       const hint = document.createElement('div');
       hint.className = 'edit-hint';
-      hint.textContent = 'Save with Ctrl/Cmd + Enter · Cancel with Esc';
+      hint.textContent = 'Enter toggles edit · Ctrl/Cmd + Enter saves · Esc cancels';
 
       const actions = document.createElement('div');
       actions.className = 'edit-actions';
@@ -237,18 +244,25 @@
 
       positionBox(node, wrapper);
 
+      wrapper.tabIndex = -1;
+      wrapper.setAttribute('role', 'group');
+
       const state = {
+        id: node.id(),
         wrapper,
         preview,
         editor,
         textarea,
         mode: 'view',
         enterEdit,
-        exitEdit
+        exitEdit,
+        setFocused,
+        focusWrapper
       };
 
       function enterEdit() {
         if (state.mode === 'edit') return;
+        focusNode(node.id());
         state.mode = 'edit';
         wrapper.classList.add('editing');
         textarea.value = node.data('latex');
@@ -258,7 +272,8 @@
         }, 0);
       }
 
-      function exitEdit(saveChanges) {
+      function exitEdit(saveChanges, options = {}) {
+        if (state.mode !== 'edit') return;
         if (saveChanges) {
           const next = textarea.value;
           node.data('latex', next);
@@ -268,10 +283,34 @@
         }
         state.mode = 'view';
         wrapper.classList.remove('editing');
+        textarea.blur();
+        if (options.restoreFocus !== false) {
+          focusWrapper();
+        }
+      }
+
+      function setFocused(isFocused) {
+        if (isFocused) {
+          wrapper.classList.add('focused');
+          focusWrapper();
+        } else {
+          wrapper.classList.remove('focused');
+        }
+      }
+
+      function focusWrapper() {
+        if (typeof wrapper.focus === 'function') {
+          try {
+            wrapper.focus({ preventScroll: true });
+          } catch (err) {
+            wrapper.focus();
+          }
+        }
       }
 
       wrapper.addEventListener('click', (event) => {
         event.stopPropagation();
+        focusNode(node.id());
         enterEdit();
       });
 
@@ -283,17 +322,6 @@
       cancelBtn.addEventListener('click', (event) => {
         event.stopPropagation();
         exitEdit(false);
-      });
-
-      textarea.addEventListener('keydown', (event) => {
-        if ((event.key === 'Enter' && (event.metaKey || event.ctrlKey))) {
-          event.preventDefault();
-          exitEdit(true);
-        }
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          exitEdit(false);
-        }
       });
 
       return state;
@@ -310,9 +338,164 @@
       }
     });
 
+    function getActiveState() {
+      return nodeBoxes.get(store.activeNodeId) || null;
+    }
+
+    function focusNode(id, options = {}) {
+      if (!id) {
+        if (store.activeNodeId) {
+          const previous = nodeBoxes.get(store.activeNodeId);
+          if (previous) {
+            if (previous.mode === 'edit') {
+              previous.exitEdit(options.saveOnBlur !== false, { restoreFocus: false });
+            }
+            previous.setFocused(false);
+          }
+          store.activeNodeId = null;
+        }
+        return;
+      }
+
+      const target = nodeBoxes.get(id);
+      if (!target) return;
+
+      if (store.activeNodeId && store.activeNodeId !== id) {
+        const previous = nodeBoxes.get(store.activeNodeId);
+        if (previous) {
+          if (previous.mode === 'edit') {
+            previous.exitEdit(options.saveOnBlur === false ? false : true, { restoreFocus: false });
+          }
+          previous.setFocused(false);
+        }
+      }
+
+      store.activeNodeId = id;
+      target.setFocused(true);
+    }
+
+    function focusByIndex(index) {
+      if (!store.nodes.length) return;
+      const normalized = (index + store.nodes.length) % store.nodes.length;
+      const nodeId = store.nodes[normalized].id;
+      focusNode(nodeId);
+    }
+
+    function focusNextNode() {
+      if (!store.nodes.length) return;
+      if (!store.activeNodeId) {
+        focusNode(store.nodes[0].id);
+        return;
+      }
+      const currentIndex = store.nodes.findIndex((n) => n.id === store.activeNodeId);
+      focusByIndex(currentIndex + 1);
+    }
+
+    function focusPreviousNode() {
+      if (!store.nodes.length) return;
+      if (!store.activeNodeId) {
+        focusNode(store.nodes[store.nodes.length - 1].id);
+        return;
+      }
+      const currentIndex = store.nodes.findIndex((n) => n.id === store.activeNodeId);
+      focusByIndex(currentIndex - 1);
+    }
+
+    function focusFirstNode() {
+      if (!store.nodes.length) return;
+      focusNode(store.nodes[0].id);
+    }
+
+    function focusLastNode() {
+      if (!store.nodes.length) return;
+      focusNode(store.nodes[store.nodes.length - 1].id);
+    }
+
+    function handleNavigation(key, event) {
+      if (key === 'Home') {
+        focusFirstNode();
+        return;
+      }
+      if (key === 'End') {
+        focusLastNode();
+        return;
+      }
+      if (key === 'Tab') {
+        if (event.shiftKey) {
+          focusPreviousNode();
+        } else {
+          focusNextNode();
+        }
+        return;
+      }
+      if (key === 'ArrowUp' || key === 'ArrowLeft') {
+        focusPreviousNode();
+        return;
+      }
+      if (key === 'ArrowDown' || key === 'ArrowRight') {
+        focusNextNode();
+      }
+    }
+
+    function handleGlobalKeydown(event) {
+      const activeState = getActiveState();
+      if (!activeState) return;
+
+      const key = event.key;
+      const isNavigationKey = key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End' || key === 'Tab';
+
+      if (activeState.mode === 'edit') {
+        if (key === 'Escape') {
+          event.preventDefault();
+          activeState.exitEdit(false);
+          return;
+        }
+        if (key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          activeState.exitEdit(true);
+          return;
+        }
+        if (key === 'Enter' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+          event.preventDefault();
+          activeState.exitEdit(true);
+          return;
+        }
+        if (isNavigationKey) {
+          event.preventDefault();
+          activeState.exitEdit(true);
+          handleNavigation(key, event);
+        }
+        return;
+      }
+
+      if (key === 'Enter' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault();
+        activeState.enterEdit();
+        return;
+      }
+
+      if (isNavigationKey) {
+        event.preventDefault();
+        handleNavigation(key, event);
+      }
+    }
+
+    store.focusNode = focusNode;
+    store.focusNextNode = focusNextNode;
+    store.focusPreviousNode = focusPreviousNode;
+    store.focusFirstNode = focusFirstNode;
+    store.focusLastNode = focusLastNode;
+
+    document.addEventListener('keydown', handleGlobalKeydown);
+
     cy.on('pan zoom', updatePositions);
     cy.on('render', updatePositions);
     window.addEventListener('resize', updatePositions);
+    cy.on('tap', 'node', (evt) => {
+      focusNode(evt.target.id());
+    });
+
+    focusFirstNode();
   });
   </script>
 </body>
