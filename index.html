@@ -16,14 +16,80 @@
 
     body {
       margin: 0;
+      min-height: 100vh;
+      display: flex;
       background: #f8f6f1;
       color: #1e293b;
       font-family: system-ui, sans-serif;
     }
 
-    #cy {
-      height: 100vh;
+    .app-shell {
+      display: flex;
+      flex: 1;
       width: 100%;
+      min-height: 100vh;
+    }
+
+    .command-panel {
+      width: 280px;
+      background: #f0ece1;
+      border-right: 1px solid #d6cfbf;
+      padding: 1.5rem 1.25rem;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.05);
+    }
+
+    .command-panel h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #3f3010;
+    }
+
+    .command-panel p {
+      margin: 0;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      color: #4b5563;
+    }
+
+    .command-panel ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .command-panel li {
+      font-size: 0.85rem;
+      color: #1f2937;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: baseline;
+    }
+
+    .command-panel li span {
+      font-weight: 600;
+    }
+
+    .command-panel code {
+      background: #e4dcc5;
+      padding: 0.1rem 0.45rem;
+      border-radius: 0.4rem;
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.8rem;
+      color: #3f3010;
+      border: 1px solid rgba(63, 48, 16, 0.12);
+    }
+
+    #cy {
+      flex: 1;
+      min-height: 100vh;
       background: #faf9f6;
       position: relative;
       overflow: hidden;
@@ -120,7 +186,19 @@
   </style>
 </head>
 <body>
-  <div id="cy"></div>
+  <div class="app-shell">
+    <aside class="command-panel" aria-label="Editing commands">
+      <h1>Editing commands</h1>
+      <p>Open a formula by clicking its node. Use these shortcuts to work quickly:</p>
+      <ul>
+        <li><span>Commit edits</span><code>Ctrl/Cmd + Enter</code></li>
+        <li><span>Cancel edits</span><code>Esc</code></li>
+        <li><span>Save on blur</span><code>Click outside editor</code></li>
+        <li><span>Switch nodes</span><code>Click another node</code></li>
+      </ul>
+    </aside>
+    <div id="cy" role="application" aria-label="Derivation graph"></div>
+  </div>
   <script>
   document.addEventListener('DOMContentLoaded', () => {
     const store = {
